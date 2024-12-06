@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philippine Address Selection</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Philippine Address Selection</h1>
+        
+        <div id="addressForm">
+            <div class="form-group">
+                <label for="province">Province:</label>
+                <select id="province">
+                    <option value="">Select Province</option>
+                </select>
+                <div class="loading" id="provinceLoading">
+                    <span class="spinner"></span>Loading provinces...
+                </div>
+                <div id="provinceError" class="error">Please select a province</div>
+            </div>
+
+            <div class="form-group">
+                <label for="city">City/Municipality:</label>
+                <select id="city" disabled>
+                    <option value="">Select City/Municipality</option>
+                </select>
+                <div class="loading" id="cityLoading">
+                    <span class="spinner"></span>Loading cities...
+                </div>
+                <div id="cityError" class="error">Please select a city/municipality</div>
+            </div>
+
+            <div class="form-group">
+                <label for="barangay">Barangay:</label>
+                <select id="barangay" disabled>
+                    <option value="">Select Barangay</option>
+                </select>
+                <div class="loading" id="barangayLoading">
+                    <span class="spinner"></span>Loading barangays...
+                </div>
+                <div id="barangayError" class="error">Please select a barangay</div>
+            </div>
+
+            <button id="submit">Submit</button>
+            <button id="reset">Reset</button>
+        </div>
+
+        <div id="summary">
+            <h3>Complete Address:</h3>
+            <p id="addressSummary"></p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'https://psgc.gitlab.io/api';
+        
+        
+        const provinceSelect = document.getElementById('province');
+        const citySelect = document.getElementById('city');
+        const barangaySelect = document.getElementById('barangay');
+        const submitButton = document.getElementById('submit');
+        const resetButton = document.getElementById('reset');
+        const summaryDiv = document.getElementById('summary');
+        const addressSummary = document.getElementById('addressSummary');
+
+        
+        const provinceLoading = document.getElementById('provinceLoading');
+        const cityLoading = document.getElementById('cityLoading');
+        const barangayLoading = document.getElementById('barangayLoading');
+
+        
+        async function fetchData(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return await response.json();
+            } catch (error) {
+                showError('Failed to fetch data. Please try again later.');
+                return null;
+            }
+        }
+
+        
+        async function loadProvinces() {
+            provinceLoading.style.display = 'block';
+            try {
+                const provinces = await fetchData(`${API_BASE_URL}/provinces`);
+                if (provinces) {
+                    provinces
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .forEach(province => {
+                            const option = new Option(province.name, province.code);
+                            provinceSelect.add(option);
+                        });
+                }
+            } catch (error) {
+                showError('Error loading provinces');
+            } finally {
+                provinceLoading.style.display = 'none';
+            }
+        }
+
+        
+        async function loadCities(provinceCode) {
+            citySelect.innerHTML = '<option value="">Select City/Municipality</option>';
+            barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+            citySelect.disabled = true;
+            barangaySelect.disabled = true;
+            
+            if (!provinceCode) return;
+
+            cityLoading.style.display = 'block';
+            try {
+                const cities = await fetchData(`${API_BASE_URL}/provinces/${provinceCode}/municipalities`);
+                const citiesHK = await fetchData(`${API_BASE_URL}/provinces/${provinceCode}/cities`);
+                
+                if (cities || citiesHK) {
+                    const allCities = [...(cities || []), ...(citiesHK || [])];
+                    allCities
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .forEach(city => {
+                            const option = new Option(city.name, city.code);
+                            citySelect.add(option);
+                        });
+                    citySelect.disabled = false;
+                }
+            } catch (error) {
+                showError('Error loading cities');
+            } finally {
+                cityLoading.style.display = 'none';
+            }
+        }
+
+        
+        async function loadBarangays(cityCode) {
+            barangaySelect.innerHTML = '<option value="">Select Barangay</option>';
+            barangaySelect.disabled = true;
+            
+            if (!cityCode) return;
+
+            barangayLoading.style.display = 'block';
+            try {
+                const barangays = await fetchData(`${API_BASE_URL}/municipalities/${cityCode}/barangays`);
+                if (barangays) {
+                    barangays
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .forEach(barangay => {
+                            const option = new Option(barangay.name, barangay.code);
+                            barangaySelect.add(option);
+                        });
+                    barangaySelect.disabled = false;
+                }
+            } catch (error) {
+               
+                try {
+                    const barangays = await fetchData(`${API_BASE_URL}/cities/${cityCode}/barangays`);
+                    if (barangays) {
+                        barangays
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .forEach(barangay => {
+                                const option = new Option(barangay.name, barangay.code);
+                                barangaySelect.add(option);
+                            });
+                        barangaySelect.disabled = false;
+                    }
+                } catch (error) {
+                    showError('Error loading barangays');
+                }
+            } finally {
+                barangayLoading.style.display = 'none';
+            }
+        }
+
+       
+        provinceSelect.addEventListener('change', (e) => {
+            loadCities(e.target.value);
+            hideError();
+            summaryDiv.style.display = 'none';
+        });
+
+        citySelect.addEventListener('change', (e) => {
+            loadBarangays(e.target.value);
+            hideError();
+            summaryDiv.style.display = 'none';
+        });
+
+        barangaySelect.addEventListener('change', () => {
+            hideError();
+            summaryDiv.style.display = 'none';
+        });
+
+        
+        submitButton.addEventListener('click', () => {
+            if (validateForm()) {
+                const address = {
+                    province: provinceSelect.options[provinceSelect.selectedIndex].text,
+                    city: citySelect.options[citySelect.selectedIndex].text,
+                    barangay: barangaySelect.options[barangaySelect.selectedIndex].text
+                };
+                
+                addressSummary.textContent = `${address.barangay}, ${address.city}, ${address.province}`;
+                summaryDiv.style.display = 'block';
+            }
+        });
+
+        
+        resetButton.addEventListener('click', () => {
+            provinceSelect.value = '';
+            citySelect.value = '';
+            barangaySelect.value = '';
+            citySelect.disabled = true;
+            barangaySelect.disabled = true;
+            summaryDiv.style.display = 'none';
+            hideError();
+        });
+
+        
+        function validateForm() {
+            let isValid = true;
+            
+            if (!provinceSelect.value) {
+                document.getElementById('provinceError').style.display = 'block';
+                isValid = false;
+            }
+            
+            if (!citySelect.value) {
+                document.getElementById('cityError').style.display = 'block';
+                isValid = false;
+            }
+            
+            if (!barangaySelect.value) {
+                document.getElementById('barangayError').style.display = 'block';
+                isValid = false;
+            }
+            
+            return isValid;
+        }
+
+       
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.style.display = 'block';
+            errorDiv.textContent = message;
+            document.getElementById('addressForm').prepend(errorDiv);
+        }
+
+        function hideError() {
+            document.querySelectorAll('.error').forEach(el => el.style.display = 'none');
+        }
+
+        
+        loadProvinces();
+    </script>
+</body>
+</html>
